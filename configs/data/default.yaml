@@ -1,0 +1,22 @@
+data_dir: ${hydra:runtime.cwd}/data
+raw_dir: ${data.data_dir}/raw/disney
+processed_dir: ${data.data_dir}/processed
+train_csv: ${data.processed_dir}/train.csv
+test_csv: ${data.processed_dir}/test.csv
+num_classes: 6
+classes:
+  - donald_duck
+  - mickey_mouse
+  - minion
+  - olaf
+  - winnie_the_pooh
+  - pumba
+batch_size: 32
+num_workers: 4
+image_size: 64
+augmentation:
+  random_horizontal_flip: true
+  random_rotation: 15
+  color_jitter:
+    brightness: 0.2
+    contrast: 0.2

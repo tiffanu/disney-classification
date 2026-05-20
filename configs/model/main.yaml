@@ -1,0 +1,9 @@
+name: efficientnet_b0
+backbone: efficientnet_b0
+pretrained: true
+head:
+  hidden_dim: 256
+  dropout1: 0.3
+  dropout2: 0.2
+num_classes: 6
+freeze_backbone_epochs: 3

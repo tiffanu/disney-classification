@@ -1,0 +1,8 @@
+defaults:
+  - data: default
+  - model: main
+  - training: default
+  - inference: default
+  - _self_
+
+experiment_name: disney-clf-main

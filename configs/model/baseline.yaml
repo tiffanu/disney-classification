@@ -1,0 +1,9 @@
+name: baseline
+architecture:
+  conv_channels:
+    - 32
+    - 64
+    - 128
+  fc_hidden: 512
+  dropout: 0.3
+num_classes: 6
