@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.env
+
+# dvc
+data/raw/
+data/processed/
+
+# ml
+mlruns/
+
+# hydra
+outputs/
+multirun/
+
+.idea/
+node_modules
