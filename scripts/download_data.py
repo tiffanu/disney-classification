@@ -14,7 +14,7 @@ def main(cfg: DictConfig) -> None:
     os.makedirs(output_dir, exist_ok=True)
     kaggle.api.authenticate()
     kaggle.api.dataset_download_files(dataset_slug, path=output_dir, unzip=True)
-    print(f"Dataset downloaded to {output_dir}")
+    print(f"Dataset downloaded to  {output_dir}")
 
 
 if __name__ == "__main__":
