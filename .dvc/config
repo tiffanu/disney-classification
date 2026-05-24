@@ -1,4 +1,6 @@
 [core]
-    remote = local_storage
-['remote "local_storage"']
-    url = /home/cogni/dvc-storage
+    remote = data_storage
+['remote "data_storage"']
+    url = /home/cogni/dvc-storage/data
+['remote "models_storage"']
+    url = /home/cogni/dvc-storage/models
