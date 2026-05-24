@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytorch_lightning as pl
 from omegaconf import DictConfig
 from sklearn.model_selection import train_test_split
@@ -5,6 +7,23 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from disney_clf.data.dataset import DisneyDataset
+
+
+def download_data(processed_dir: str, remote: str = "data_storage") -> None:
+    processed = Path(processed_dir)
+    if (processed / "train.csv").exists() and (processed / "test.csv").exists():
+        return
+    try:
+        from dvc.repo import Repo
+
+        with Repo() as repo:
+            repo.pull(remote=remote)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to pull data via dvc (remote={remote}): {exc}. "
+            "Run `dvc pull -r data_storage` manually or "
+            "`python scripts/download_data.py` to fetch raw data."
+        ) from exc
 
 
 class DisneyDataModule(pl.LightningDataModule):
