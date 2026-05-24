@@ -2,3 +2,4 @@ checkpoint_path: models/best.ckpt
 onnx_path: models/model.onnx
 opset_version: 17
 device: cpu
+image_path: null

@@ -5,4 +5,8 @@ defaults:
   - inference: default
   - _self_
 
-experiment_name: disney-clf-main
+experiment_name: disney-clf
+
+mlflow:
+  tracking_uri: http://127.0.0.1:8080
+  artifact_local_dir: ${hydra:runtime.cwd}/mlruns
