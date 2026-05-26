@@ -6,7 +6,7 @@ scheduler:
   name: cosine_annealing
   T_max: 30
   eta_min: 1.0e-6
-epochs: 30
+epochs: 10 # 10 - for local CPU smoke, 30 - for performance
 gradient_clip_val: 1.0
 early_stopping:
   monitor: val/macro_f1
