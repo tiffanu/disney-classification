@@ -1,3 +1,4 @@
+import onnxruntime as ort
 import torch
 from omegaconf import DictConfig
 
@@ -25,8 +26,6 @@ def export_to_onnx(cfg: DictConfig) -> None:
         },
     )
     print(f"Exported ONNX model to {cfg.inference.onnx_path}")
-
-    import onnxruntime as ort
 
     sess = ort.InferenceSession(cfg.inference.onnx_path)
     out = sess.run(None, {"image": dummy.numpy()})

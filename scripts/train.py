@@ -1,3 +1,5 @@
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import hydra
@@ -16,9 +18,6 @@ from disney_clf.training.module import DisneyClassifier
 
 
 def _resolve_tracking_uri(cfg: DictConfig, root: Path) -> str:
-    import urllib.parse
-    import urllib.request
-
     configured = cfg.mlflow.tracking_uri
     parsed = urllib.parse.urlparse(configured)
     if parsed.scheme in {"http", "https"}:
