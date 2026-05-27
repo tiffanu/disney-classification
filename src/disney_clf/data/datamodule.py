@@ -1,5 +1,7 @@
+import tempfile
 from pathlib import Path
 
+import pandas as pd
 import pytorch_lightning as pl
 from omegaconf import DictConfig
 from sklearn.model_selection import train_test_split
@@ -7,29 +9,51 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from disney_clf.data.dataset import DisneyDataset
+from disney_clf.data.preprocess import build_manifest
 
 
-def download_data(processed_dir: str, remote: str = "data_storage") -> None:
+def download_data(
+    raw_dir: str, processed_dir: str, remote: str = "data_storage"
+) -> None:
     processed = Path(processed_dir)
     if (processed / "train.csv").exists() and (processed / "test.csv").exists():
         return
+
     try:
         from dvc.repo import Repo
 
         with Repo() as repo:
             repo.pull(remote=remote)
-    except Exception as exc:
+        if (processed / "train.csv").exists() and (processed / "test.csv").exists():
+            return
+    except Exception as dvc_exc:
+        print(f"[data] dvc pull failed ({dvc_exc}); falling back to Kaggle API")
+
+    try:
+        import kaggle
+
+        raw = Path(raw_dir)
+        raw.mkdir(parents=True, exist_ok=True)
+        kaggle.api.authenticate()
+        kaggle.api.dataset_download_files(
+            "sayehkargari/disney-characters-dataset", path=str(raw), unzip=True
+        )
+        build_manifest(str(raw), str(processed))
+    except Exception as kaggle_exc:
         raise RuntimeError(
-            f"Failed to pull data via dvc (remote={remote}): {exc}. "
-            "Run `dvc pull -r data_storage` manually or "
-            "`python scripts/download_data.py` to fetch raw data."
-        ) from exc
+            f"Failed to fetch data via DVC and Kaggle API ({kaggle_exc}). "
+            "Either run `dvc pull -r data_storage` with access to the remote, "
+            "or place `~/.kaggle/kaggle.json` and rerun."
+        ) from kaggle_exc
 
 
 class DisneyDataModule(pl.LightningDataModule):
     def __init__(self, cfg: DictConfig):
         super().__init__()
         self.cfg = cfg
+
+    def prepare_data(self) -> None:
+        download_data(self.cfg.raw_dir, self.cfg.processed_dir)
 
     def _train_transforms(self):
         aug = self.cfg.augmentation
@@ -61,21 +85,22 @@ class DisneyDataModule(pl.LightningDataModule):
         )
 
     def setup(self, stage=None):
-        import pandas as pd
-
         train_df = pd.read_csv(self.cfg.train_csv)
         train_split, val_split = train_test_split(
             train_df, test_size=0.1, stratify=train_df["label"], random_state=42
         )
-        train_split.to_csv("/tmp/disney_train_split.csv", index=False)
-        val_split.to_csv("/tmp/disney_val_split.csv", index=False)
+        tmp_dir = Path(tempfile.gettempdir())
+        train_split_path = tmp_dir / "disney_train_split.csv"
+        val_split_path = tmp_dir / "disney_val_split.csv"
+        train_split.to_csv(train_split_path, index=False)
+        val_split.to_csv(val_split_path, index=False)
 
         self.train_dataset = DisneyDataset(
-            "/tmp/disney_train_split.csv",
+            str(train_split_path),
             transform=self._train_transforms(),
         )
         self.val_dataset = DisneyDataset(
-            "/tmp/disney_val_split.csv",
+            str(val_split_path),
             transform=self._eval_transforms(),
         )
         self.test_dataset = DisneyDataset(
