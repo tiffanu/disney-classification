@@ -6,16 +6,28 @@ build/
 .venv/
 .env
 
-# dvc
+# dvc-tracked data
 data/raw/
-data/processed/
+data/processed/*
+!data/processed/*.dvc
+
+# dvc-tracked models
+models/*
+!models/*.dvc
 
 # ml
 mlruns/
+lightning_logs/
+plots/
 
 # hydra
 outputs/
 multirun/
 
+# ide
 .idea/
 node_modules
+
+# stray docs
+final.md
+*.pdf
