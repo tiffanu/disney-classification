@@ -1,5 +1,6 @@
 import io
 import subprocess
+import tempfile
 from pathlib import Path
 
 import matplotlib
@@ -294,7 +295,7 @@ class DisneyClassifier(pl.LightningModule):
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
         buf.seek(0)
-        tmp = Path("/tmp") / Path(artifact_path).name
+        tmp = Path(tempfile.gettempdir()) / Path(artifact_path).name
         tmp.write_bytes(buf.getvalue())
         try:
             client.log_artifact(
