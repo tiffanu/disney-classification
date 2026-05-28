@@ -28,14 +28,16 @@ def test_preprocess_output_shape():
 
 
 @pytest.mark.skipif(
-    not __import__("os").path.exists("models/model.onnx"),
+    not __import__("os").path.exists("models/model_main.onnx"),
     reason="ONNX model not present",
 )
 def test_onnx_inference():
     import numpy as np
     import onnxruntime as ort
 
-    sess = ort.InferenceSession("models/model.onnx", providers=["CPUExecutionProvider"])
+    sess = ort.InferenceSession(
+        "models/model_main.onnx", providers=["CPUExecutionProvider"]
+    )
     dummy = np.random.randn(1, 3, 64, 64).astype(np.float32)
     out = sess.run(None, {"image": dummy})
     assert out[0].shape == (1, 6)

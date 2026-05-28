@@ -1,5 +1,5 @@
-checkpoint_path: models/best.ckpt
-onnx_path: models/model.onnx
+checkpoint_path: models/best_main.ckpt
+onnx_path: models/model_main.onnx
 opset_version: 17
 device: cpu
 image_path: null
