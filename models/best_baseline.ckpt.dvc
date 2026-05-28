@@ -1,0 +1,5 @@
+outs:
+- md5: 13bdb79dab3ca14e5c85bfaba36ea30f
+  size: 1680962
+  hash: md5
+  path: best_baseline.ckpt

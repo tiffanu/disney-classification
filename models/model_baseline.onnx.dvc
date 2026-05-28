@@ -1,0 +1,5 @@
+outs:
+- md5: 01aafffe8f35ecbaff95e35981d14454
+  size: 4254
+  hash: md5
+  path: model_baseline.onnx
