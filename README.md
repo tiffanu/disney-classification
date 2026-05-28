@@ -1,77 +1,143 @@
 # Disney Character Classification
 
-Многоклассовая классификация 6 персонажей Disney по изображениям. PyTorch
-Lightning + Hydra + MLflow + DVC + ONNX.
+Многоклассовая классификация 6 персонажей Disney по изображениям.
+PyTorch Lightning + Hydra + MLflow + DVC + ONNX.
 
 ## Описание проекта
 
-### Задача
-
-Определить, какой из 6 персонажей изображён на картинке:
+Задача — определить, какой из шести персонажей изображён на картинке:
 `donald_duck`, `mickey_mouse`, `minion`, `olaf`, `winnie_the_pooh`, `pumba`.
+Прикладной сценарий: классификатор для пайплайна модерации/тегирования
+пользовательского контента в детских приложениях и сервисах с лицензионным
+контентом Disney/Universal.
 
-### Данные
+## Данные
 
-Источник: [Kaggle — Disney Characters Dataset](https://www.kaggle.com/datasets/sayehkargari/disney-characters-dataset).
+- **Источник:** [Kaggle — Disney Characters Dataset](https://www.kaggle.com/datasets/sayehkargari/disney-characters-dataset)
+- **Автор:** Sayeh Kargari
+- **Дата публикации:** 2023 (Kaggle)
+- **Объём:** ~120 МБ, 4 667 JPEG-изображений
+- **Разбиение:** train/test заранее заданы автором датасета
+- **Классы:** `donald_duck`, `mickey_mouse`, `minion`, `olaf`,
+  `winnie_the_pooh`, `pumba`
+- **Размер входа:** изображения приводятся к 64×64 при обучении
+- **Особенности:** мультяшный стиль, варьирующееся качество/освещение/фон,
+  умеренный дисбаланс по классам
 
-- 4 667 JPEG-изображений, заранее разбитых на train/test.
-- 6 классов, классы несбалансированы умеренно.
-- Размер ≈ 120 МБ, изображения приводятся к 64×64 при обучении.
-- Хранятся вне git: raw — через `scripts/download_data.py` (Kaggle API),
-  обработанные манифесты (`train.csv`, `test.csv`) — под DVC.
+**Пример входа.** Одиночный RGB-файл (jpg/png), например:
+`data/raw/disney/cartoon/test/mickey/<file>.jpg`. Внутри `infer.py` файл
+проходит: `PIL.Image.open → convert("RGB") → resize(64, 64) → /255 →
+(x − 0.5) / 0.5 → CHW → batch dim`.
 
-### Модели
+Данные не лежат в git. Они подтягиваются автоматически (раздел
+[Data](#data)): сначала DVC из локального remote, при недоступности —
+Kaggle API (требует `~/.kaggle/kaggle.json`).
+
+## Модели
 
 В проекте две модели: лёгкий baseline для проверки пайплайна и основная — на
 предобученном EfficientNet-B0.
 
-#### Baseline CNN
+### Baseline CNN
 
-3-блочная свёрточная сеть.
+3-блочная свёрточная сеть, обучается с нуля.
+
+**Пайплайн:**
+
+1. **Preprocessing:** Resize(64×64) → RandomHorizontalFlip →
+   RandomRotation(15°) → ColorJitter(0.2/0.2) → ToTensor →
+   Normalize(mean=0.5, std=0.5).
+2. **Training:** AdamW (lr=1e-3, weight_decay=1e-4) +
+   CosineAnnealingLR (T_max=30), CrossEntropy, grad_clip=1.0,
+   freeze не используется.
+3. **Validation:** 10% стратифицированный split от train, основная метрика —
+   `val/macro_f1`, EarlyStopping(patience=7).
+4. **Postprocessing:** argmax по логитам.
+
+**Архитектура:**
 
 ```
 Input (3×64×64)
-→ Conv(3→32, 3×3) → BN → ReLU → MaxPool(2)    # 32×32
-→ Conv(32→64, 3×3) → BN → ReLU → MaxPool(2)   # 16×16
-→ Conv(64→128, 3×3) → BN → ReLU → MaxPool(2)  # 8×8
-→ Flatten → Linear(8192→512) → ReLU → Dropout(0.3)
-→ Linear(512→6)
+→ Conv(3→8, 3×3) → BN → ReLU → MaxPool(2)    # 32×32
+→ Conv(8→16, 3×3) → BN → ReLU → MaxPool(2)   # 16×16
+→ Conv(16→32, 3×3) → BN → ReLU → MaxPool(2)  # 8×8
+→ Flatten → Linear(2048→64) → ReLU → Dropout(0.5)
+→ Linear(64→6)
 ```
 
-#### EfficientNet-B0
+### EfficientNet-B0
 
-Предобученный
-`efficientnet_b0`
-(веса `EfficientNet_B0_Weights.DEFAULT` из `torchvision`)
+Предобученный `torchvision.models.efficientnet_b0` с весами
+`EfficientNet_B0_Weights.DEFAULT`.
+
+**Пайплайн:**
+
+1. **Preprocessing:** те же transforms, что в baseline (Resize 64×64 +
+   аугментации), затем внутри сети — Upsample до 224×224 под нативный
+   input EfficientNet.
+2. **Training:** AdamW (lr=1e-3) +
+   CosineAnnealingLR (T_max=30), CrossEntropy.
+3. **Validation / Postprocessing:** аналогично baseline; на инференсе —
+   softmax + argmax.
+
+**Архитектура:**
 
 ```
 Input (3×64×64)
 → Upsample(224×224)
-→ EfficientNet-B0 backbone (заморожен первые 3 эпохи)
+→ EfficientNet-B0
 → AvgPool → Flatten(1280)
 → Dropout(0.3) → Linear(1280→256) → ReLU → Dropout(0.2)
 → Linear(256→6)
 ```
 
-Ожидаемое качество на валидации:
+## Метрики
+
+Все метрики считаются через
+[`torchmetrics`] и логируются
+в MLflow на каждой эпохе для всех трёх split'ов (train/val/test).
+
+| Метрика | Зачем нужна | Ожид. (EffNet val) |
+| --- | --- | --- |
+| `accuracy` | базовая, классы сбалансированы умеренно | ~0.95 |
+| `macro_f1` | устойчива к дисбалансу, **primary metric** для checkpoint и EarlyStopping | ~0.95 |
+| `precision_macro` | контроль false positives по редким классам | ~0.94 |
+| `recall_macro` | контроль пропусков по редким классам | ~0.95 |
+| `cohen_kappa` | согласие модели с истиной с поправкой на случайное угадывание | ~0.93 |
+| `train/val/test loss` | контроль переобучения, расхождения train↔val | val < 0.2 |
+
+Дополнительно в MLflow попадают **confusion matrix** (по эпохам) и **learning
+curves** для loss и каждой метрики.
+
+Ожидаемое качество:
 
 | Модель | val/macro_f1 |
-|---|---|
+| --- | --- |
 | Baseline CNN | ~0.72 |
 | EfficientNet-B0 | ~0.95 |
 
-### Метрики
+## Inference
 
-Все считаются через [`torchmetrics`](https://lightning.ai/docs/torchmetrics/stable/):
+### Ресурсы и производительность
 
-- `accuracy` — общая доля правильных ответов
-- `macro_f1` — основная метрика отбора чекпойнтов
-- `precision_macro`, `recall_macro`
-- `cohen_kappa`
+| Стадия                           | CPU | RAM | Время        |
+|----------------------------------| --- | --- |--------------|
+| Preprocessing                    | 1 core | 1 GB | ~1 мин       |
+| Training (Baseline, 10 эпох)     | 4 cores | 4 GB | ~20 мин      |
+| Training (EfficientNet, 20 эпох) | T4 GPU | 8 GB | ~30 мин      |
+| Inference (ONNX, CPU)            | 1 core | 512 MB | ~0.1 с |
 
-Плюс `loss` на train/val/test.
+Throughput: ~33 img/s на CPU (Intel Pentium Gold 7505, single-thread).
 
----
+### Inference pipeline
+
+1. Загрузка ONNX-сессии: `onnxruntime.InferenceSession(model_path,
+   providers=["CPUExecutionProvider"])`.
+2. Предобработка изображения: `PIL.Image.open → convert("RGB") →
+   resize(64, 64) → /255 → (x − 0.5) / 0.5 → CHW → batch dim`.
+3. Forward: `sess.run(None, {"image": img})` → logits shape `(1, 6)`.
+4. Постобработка: softmax → argmax → возврат JSON
+   `{class, confidence, probabilities}`.
 
 ## Setup
 
@@ -79,8 +145,8 @@ Input (3×64×64)
 в `pyproject.toml` (lock — `uv.lock`).
 
 ```bash
-git clone <repo-url> disney-clf
-cd disney-clf
+git clone <repo-url> disney-classification
+cd disney-classification
 
 uv sync --extra dev
 source .venv/bin/activate
@@ -90,72 +156,95 @@ pre-commit install
 
 ## Data
 
-Данные не лежат в git. Доступны два пути:
+Данные не лежат в git. Есть три способа получить их:
 
-1. **Скачать данные с Kaggle** (нужен `~/.kaggle/kaggle.json`):
+1. **Автоматически** (рекомендуется) — `train.py` сам вызывает
+   `DisneyDataModule.prepare_data()`, которая по очереди пробует:
+
+   - `dvc pull -r data_storage` (если remote доступен);
+   - Kaggle API (если есть `~/.kaggle/kaggle.json`) — скачивает raw и строит
+     манифесты через `scripts/preprocess.py`.
+
+2. **Вручную через DVC:**
+
+   ```bash
+   dvc pull -r data_storage   # data/processed/{train,test}.csv + raw
+   ```
+
+3. **Вручную через Kaggle API:**
 
    ```bash
    python scripts/download_data.py
    python scripts/preprocess.py
    ```
 
-2. **Скачать готовые манифесты через DVC** (если есть доступ к remote):
-
-   ```bash
-   dvc pull -r data_storage
-   ```
-
-При запуске `train.py` `DisneyDataModule.prepare_data()` сам вызывает
-`dvc pull` если `data/processed/*.csv` отсутствуют.
-
 DVC настроен на два хранилища (`.dvc/config`):
 
-- `data_storage` — данные (`data/`)
-- `models_storage` — артефакты моделей (`models/`)
+- `data_storage` — данные (`data/processed/*.csv`)
+- `models_storage` — артефакты моделей (`models/model.onnx`,
+  `models/model.onnx.data`, при наличии — `models/best.ckpt`)
 
 ## Train
 
-Тренировка запускается одной командой; конфиги — Hydra.
+Тренировка — одной командой, конфиги через Hydra.
+
+Опционально поднять MLflow tracking server (если недоступен — `train.py`
+автоматически фолбэкается на file-backend в `./mlruns`):
 
 ```bash
 mlflow server --host 127.0.0.1 --port 8080 \
     --backend-store-uri ./mlruns --default-artifact-root ./mlruns
-
-python scripts/train.py
-
-python scripts/train.py model=baseline
-
-python scripts/train.py training.epochs=10 data.batch_size=64
 ```
 
-Если MLflow-сервер недоступен, `train.py` автоматически фолбэкается на
-файловый трекинг в `./mlruns`.
+Запуск:
 
-### Экспорт в ONNX
+```bash
+# На CPU — для проверки пайплайна
+python scripts/train.py model=baseline training.epochs=1
+
+# Полный baseline (10 эпох)
+python scripts/train.py model=baseline
+
+# Полный EfficientNet (GPU)
+python scripts/train.py model=main training.epochs=10
+```
+
+Любые поля Hydra-конфига можно переопределить из CLI, например
+`data.batch_size=64 training.optimizer.lr=5e-4`.
+
+## Export & Inference
+
+Экспорт лучшего чекпойнта в ONNX (opset 17, dynamic batch):
 
 ```bash
 python scripts/export.py inference.checkpoint_path=models/best.ckpt
 ```
 
-### Инференс
-
-Точка входа — `infer.py` в корне:
+Инференс одиночного изображения:
 
 ```bash
 python infer.py inference.image_path=path/to/image.jpg
 ```
 
-Возвращает JSON с предсказанным классом и вероятностями.
-Формат входа: одиночное RGB-изображение (jpg/png)
+Возвращает JSON:
+
+```json
+{
+  "class": "mickey_mouse",
+  "confidence": 0.97,
+  "probabilities": { "donald_duck": 0.01, "mickey_mouse": 0.97, ... }
+}
+```
 
 ## Logging
 
-- MLflow (`configs/config.yaml: mlflow.tracking_uri`, по умолчанию
-  `http://127.0.0.1:8080`).
-- Логируются: все гиперпараметры (Hydra-конфиг целиком), git commit id (тег),
-  train/val/test loss и 5 метрик по эпохам, чекпойнты модели (`log_model=True`).
-- В артефакты MLflow попадают: confusion matrix по эпохам, кривые обучения
-  для loss и каждой метрики.
+- **MLflow** — `configs/config.yaml: mlflow.tracking_uri`, по умолчанию
+  `http://127.0.0.1:8080`; при недоступности —  `./mlruns`.
+- Логируются: весь Hydra-конфиг как hyperparams, git commit hash как тег,
+  train/val/test loss и 5 метрик по эпохам, чекпойнты модели
+  (`log_model=True`).
+- В артефакты MLflow попадают: confusion matrices по эпохам и learning
+  curves (по одному графику на каждую метрику + loss).
 - После `trainer.fit()` графики дополнительно копируются в `plots/`.
 
 ## Overall
@@ -165,26 +254,25 @@ python infer.py inference.image_path=path/to/image.jpg
 ```
 disney-classification/
 ├── configs/                  # Hydra-конфиги
-│   ├── config.yaml           # корневой, defaults + mlflow uri
+│   ├── config.yaml           # корневой (defaults + mlflow uri)
 │   ├── data/default.yaml
 │   ├── model/{baseline,main}.yaml
 │   ├── training/default.yaml
 │   └── inference/default.yaml
 ├── src/disney_clf/           # python-пакет
-│   ├── data/                 # dataset, datamodule, preprocess, download_data
-│   ├── models/               # baseline CNN, EfficientNet
+│   ├── data/                 # dataset, datamodule, preprocess
+│   ├── models/               # baseline, EfficientNet
 │   ├── training/module.py    # LightningModule + логирование
 │   └── inference/            # ONNX-экспорт, predict
-├── scripts/                  # CLI-обвязки (Hydra entrypoints)
+├── scripts/                  # Hydra entrypoints
 │   ├── download_data.py
 │   ├── preprocess.py
 │   ├── train.py
 │   └── export.py
-├── infer.py                  # точка входа инференса (Hydra)
+├── infer.py                  # точка входа инференса
 ├── tests/                    # pytest
-├── plots/                    # графики обучения (создаётся после train)
-├── models/                   # чекпойнты + onnx (под dvc)
-├── data/                     # train.csv, test.csv, raw/ (под dvc)
+├── data/processed/*.dvc      # DVC sidecars (train.csv, test.csv)
+├── models/*.dvc              # DVC sidecars (model.onnx, *.data)
 ├── .dvc/config               # data_storage + models_storage
 ├── .pre-commit-config.yaml
 ├── pyproject.toml
@@ -193,6 +281,6 @@ disney-classification/
 
 Production-пайплайн:
 
-1. `train.py` → `models/best.ckpt` (Lightning checkpoint) + MLflow run.
-2. `export.py` → `models/model.onnx` (opset 17, dynamic batch).
-3. `infer.py` → загружает ONNX через `onnxruntime`, выдаёт предсказание.
+1. `scripts/train.py` → `models/best-*.ckpt` (Lightning checkpoint) + MLflow run.
+2. `scripts/export.py` → `models/model.onnx` (opset 17, dynamic batch).
+3. `infer.py` → загружает ONNX через `onnxruntime`, отдаёт JSON-предсказание.
