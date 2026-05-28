@@ -16,4 +16,4 @@ checkpoint:
   monitor: val/macro_f1
   mode: max
   save_top_k: 1
-  filename: "best-{epoch:02d}-{val/macro_f1:.3f}"
+  filename: "best-epoch{epoch:02d}-macro_f1{val/macro_f1:.3f}"

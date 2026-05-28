@@ -56,6 +56,7 @@ def main(cfg: DictConfig) -> None:
             mode=cfg.training.checkpoint.mode,
             save_top_k=cfg.training.checkpoint.save_top_k,
             filename=cfg.training.checkpoint.filename,
+            auto_insert_metric_name=False,
         ),
         EarlyStopping(
             monitor=cfg.training.early_stopping.monitor,
