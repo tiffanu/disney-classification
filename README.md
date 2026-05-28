@@ -38,7 +38,7 @@ Kaggle API (требует `~/.kaggle/kaggle.json`).
 
 ## Модели
 
-В проекте две модели: лёгкий baseline для проверки пайплайна и основная — на
+В проекте две модели: baseline CNN и основная — на
 предобученном EfficientNet-B0.
 
 ### Baseline CNN
@@ -51,8 +51,7 @@ Kaggle API (требует `~/.kaggle/kaggle.json`).
    RandomRotation(15°) → ColorJitter(0.2/0.2) → ToTensor →
    Normalize(mean=0.5, std=0.5).
 2. **Training:** AdamW (lr=1e-3, weight_decay=1e-4) +
-   CosineAnnealingLR (T_max=30), CrossEntropy, grad_clip=1.0,
-   freeze не используется.
+   CosineAnnealingLR (T_max=30), CrossEntropy, grad_clip=1.0.
 3. **Validation:** 10% стратифицированный split от train, основная метрика —
    `val/macro_f1`, EarlyStopping(patience=7).
 4. **Postprocessing:** argmax по логитам.
@@ -109,8 +108,6 @@ Input (3×64×64)
 | `cohen_kappa` | согласие модели с истиной с поправкой на случайное угадывание | ~0.93 |
 | `train/val/test loss` | контроль переобучения, расхождения train↔val | val < 0.2 |
 
-Дополнительно в MLflow попадают **confusion matrix** (по эпохам) и **learning
-curves** для loss и каждой метрики.
 
 Итоговые метрики на test split:
 
@@ -136,9 +133,6 @@ curves** для loss и каждой метрики.
 | Preprocessing                    | 1 core | 1 GB | ~1 мин  |
 | Training (Baseline, 10 эпох)     | T4 GPU | 4 GB | ~10 мин |
 | Training (EfficientNet, 20 эпох) | T4 GPU | 8 GB | ~30 мин |
-| Inference (ONNX, CPU)            | 1 core | 512 MB | ~0.1 с  |
-
-Throughput: ~33 img/s на CPU (Intel Pentium Gold 7505, single-thread).
 
 ### Inference pipeline
 
@@ -228,7 +222,8 @@ python scripts/train.py model=main training.epochs=10
 Экспорт лучшего чекпойнта в ONNX (opset 17, dynamic batch):
 
 ```bash
-python scripts/export.py inference.checkpoint_path=models/best.ckpt
+CKPT=$(ls models/best-epoch*.ckpt | head -1)
+python scripts/export.py model=baseline inference.checkpoint_path=$CKPT inference.onnx_path=models/model_smoke.onnx
 ```
 
 Инференс одиночного изображения:
