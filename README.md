@@ -25,9 +25,12 @@ PyTorch Lightning + Hydra + MLflow + DVC + ONNX.
   умеренный дисбаланс по классам
 
 **Пример входа.** Одиночный RGB-файл (jpg/png), например:
-`data/raw/disney/cartoon/test/mickey/<file>.jpg`. Внутри `infer.py` файл
-проходит: `PIL.Image.open → convert("RGB") → resize(64, 64) → /255 →
-(x − 0.5) / 0.5 → CHW → batch dim`.
+`data/raw/disney/cartoon/train/pooh/winnie-pooh-winnie-pooh-relax.jpg`.
+
+![Пример: Winnie the Pooh](docs/assets/sample_winnie_the_pooh.jpg)
+
+Внутри `infer.py` файл проходит: `PIL.Image.open → convert("RGB") →
+resize(64, 64) → /255 → (x − 0.5) / 0.5 → CHW → batch dim`.
 
 Данные не лежат в git. Они подтягиваются автоматически (раздел
 [Data](#data)): сначала DVC из локального remote, при недоступности —
@@ -109,23 +112,31 @@ Input (3×64×64)
 Дополнительно в MLflow попадают **confusion matrix** (по эпохам) и **learning
 curves** для loss и каждой метрики.
 
-Ожидаемое качество:
+Итоговые метрики на test split:
 
-| Модель | val/macro_f1 |
-| --- | --- |
-| Baseline CNN | ~0.72 |
-| EfficientNet-B0 | ~0.95 |
+| Модель | test/accuracy | test/macro_f1 | test/cohen_kappa |
+| --- | --- | --- | --- |
+| Baseline CNN | 0.897 | 0.893 | 0.868 |
+| EfficientNet-B0 | 0.995 | 0.995 | 0.993 |
+
+**Baseline CNN:**
+
+![Baseline test metrics](docs/assets/metrics_baseline.jpg)
+
+**EfficientNet-B0:**
+
+![Main test metrics](docs/assets/metrics_main.jpg)
 
 ## Inference
 
 ### Ресурсы и производительность
 
-| Стадия                           | CPU | RAM | Время        |
-|----------------------------------| --- | --- |--------------|
-| Preprocessing                    | 1 core | 1 GB | ~1 мин       |
-| Training (Baseline, 10 эпох)     | 4 cores | 4 GB | ~20 мин      |
-| Training (EfficientNet, 20 эпох) | T4 GPU | 8 GB | ~30 мин      |
-| Inference (ONNX, CPU)            | 1 core | 512 MB | ~0.1 с |
+| Стадия                           | CPU | RAM | Время   |
+|----------------------------------| --- | --- |---------|
+| Preprocessing                    | 1 core | 1 GB | ~1 мин  |
+| Training (Baseline, 10 эпох)     | T4 GPU | 4 GB | ~10 мин |
+| Training (EfficientNet, 20 эпох) | T4 GPU | 8 GB | ~30 мин |
+| Inference (ONNX, CPU)            | 1 core | 512 MB | ~0.1 с  |
 
 Throughput: ~33 img/s на CPU (Intel Pentium Gold 7505, single-thread).
 
