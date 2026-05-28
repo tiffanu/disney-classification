@@ -133,24 +133,28 @@ class DisneyClassifier(pl.LightningModule):
             for param in self.model.features.parameters():
                 param.requires_grad = epoch >= freeze_until
 
-    def _record_history(self):
+    def _record_history(self, prefix: str):
         for key, val in self.trainer.callback_metrics.items():
-            if not (key.startswith("train/") or key.startswith("val/")):
+            if not key.startswith(f"{prefix}/"):
                 continue
             try:
                 value = float(val)
             except (TypeError, ValueError):
                 continue
-            self._history.setdefault(key, []).append((self.current_epoch, value))
+            history = self._history.setdefault(key, [])
+            if history and history[-1][0] == self.current_epoch:
+                history[-1] = (self.current_epoch, value)
+            else:
+                history.append((self.current_epoch, value))
 
     def on_train_epoch_end(self):
-        self._record_history()
+        self._record_history("train")
 
     def on_validation_epoch_end(self):
-        self._record_history()
         if self.trainer.sanity_checking:
             self.val_confmat.reset()
             return
+        self._record_history("val")
         self._log_confusion_matrix("val", self.val_confmat)
         self.val_confmat.reset()
 
